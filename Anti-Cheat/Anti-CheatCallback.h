@@ -5,7 +5,7 @@
 #define PROCESS_VM_READ        (0x0010)
 #define PROCESS_VM_OPERATION   (0x0008)
 
-EXTERN_C_START
+EXTERN_C
 
 OB_PREOP_CALLBACK_STATUS
 AntiCheatOBPreOperationCallback (
@@ -49,6 +49,3 @@ AntiCheatCreateProcessNotifyRoutine(
 );
 
 
-
-
-EXTERN_C_END

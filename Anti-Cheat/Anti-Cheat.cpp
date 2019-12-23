@@ -303,7 +303,11 @@ NTSTATUS FindSystemProcess(_In_ HANDLE ProcessId,
          //If the WaitProcessEvent is not awakened by the unload
          if (!g_Global_Data.m_isUnloaded)
          {
+             //Wait Protect Process Init...
+             KrnlSleep(5000);
+
              AkrOsPrint("Find Launch Protect Process:%wZ!\n", &uProcessName);
+
              //General switch
              ntStatus = StartAntiyCheat();
              if (!NT_SUCCESS(ntStatus))
