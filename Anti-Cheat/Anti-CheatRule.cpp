@@ -72,13 +72,14 @@ NTSTATUS UpdateWhiteList(_Inout_ LIST_ENTRY* pWhiteListHeader)
     WCHAR swDecryptedAkrosExeString[decltype(EncryptedakrosExeString)::Length] = { 0x00 };
     WCHAR swDecryptedAkrosLauncherExeString[decltype(EncryptedakroslauncherExeString)::Length] = { 0x00 };
     WCHAR swDecryptedCsrssExeString[decltype(EncryptedcsrssExeString)::Length] = { 0x00 };
+    WCHAR swDecryptedAkrosx86DllString[decltype(EncryptedakrosX86DllString)::Length] = { 0x00 };
 
     DecryptString(EncryptedakrosExeString, swDecryptedAkrosExeString);
     DecryptString(EncryptedakroslauncherExeString, swDecryptedAkrosLauncherExeString);
     DecryptString(EncryptedcsrssExeString, swDecryptedCsrssExeString);
-    
+    DecryptString(EncryptedakrosX86DllString, swDecryptedAkrosx86DllString);
 
-    WCHAR* pWhiteListBuffer[] = {swDecryptedAkrosExeString, swDecryptedAkrosLauncherExeString,  swDecryptedCsrssExeString ,0x00};
+    WCHAR* pWhiteListBuffer[] = {swDecryptedAkrosExeString, swDecryptedAkrosLauncherExeString,  swDecryptedCsrssExeString, swDecryptedAkrosx86DllString, 0x00};
 
     do
     {
@@ -110,6 +111,7 @@ NTSTATUS UpdateWhiteList(_Inout_ LIST_ENTRY* pWhiteListHeader)
     RtlSecureZeroMemory(swDecryptedAkrosExeString, decltype(EncryptedakrosExeString)::Length);
     RtlSecureZeroMemory(swDecryptedAkrosLauncherExeString, decltype(EncryptedakroslauncherExeString)::Length);
     RtlSecureZeroMemory(swDecryptedCsrssExeString, decltype(EncryptedcsrssExeString)::Length);
+    RtlSecureZeroMemory(swDecryptedAkrosx86DllString, decltype(EncryptedakrosX86DllString)::Length);
 
     return Status;
 }

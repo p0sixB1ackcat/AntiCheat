@@ -116,7 +116,6 @@ NTSTATUS FindSystemProcess(_In_ HANDLE ProcessId,
      ObUnRegisterCallbacks(g_Global_Data.m_ObRegistrationHandle);
  }
 
-
  NTSTATUS DispatchIoControl(PDEVICE_OBJECT pDevicceObject, PIRP pIrp)
  {
      NTSTATUS ntStatus = STATUS_SUCCESS;
@@ -145,19 +144,10 @@ NTSTATUS FindSystemProcess(_In_ HANDLE ProcessId,
      return ntStatus;
  }
 
- VOID DriverUnload(PDRIVER_OBJECT pDrvObject)
+ VOID StopAntiCheat(VOID)
  {
-     UNICODE_STRING uSymboliclinkName = { 0x00 };
-     WCHAR lpSymboliclinkName[decltype(EncryptedDosDevicesAntiyCheatString)::Length];
-
-     DecryptString(EncryptedDosDevicesAntiyCheatString, lpSymboliclinkName);
-     
-     RtlInitUnicodeString(&uSymboliclinkName, lpSymboliclinkName);
-     
-     if (g_Global_Data.m_isUnloaded == FALSE)
+     if (g_Global_Data.m_isUnloaded)
      {
-         g_Global_Data.m_isUnloaded = TRUE;
-
          //Only if everything is initialized successfully,Indicates that the protection thread is open and needs to wait for unloading
          if (g_Global_Data.m_IsInitMiniFilter &&
              g_Global_Data.m_IsSetObCallback &&
@@ -168,19 +158,47 @@ NTSTATUS FindSystemProcess(_In_ HANDLE ProcessId,
              //Until then, in ProtectThreadWork, the sleeping tasks are not complete, and wait for them to finish
              KrnlSleep(5000);
          }
-     }
 
-     //If the system thread created by the driver is still waiting for the protection process while unloading, we need to set the event to wake up the wait
-     KeSetEvent(&g_Global_Data.m_WaitProcessEvent, IO_NO_INCREMENT, FALSE);
+         //If the system thread created by the driver is still waiting for the protection process while unloading, we need to set the event to wake up the wait
+         KeSetEvent(&g_Global_Data.m_WaitProcessEvent, IO_NO_INCREMENT, FALSE);
+     }
 
      //Wait a minute 
      KrnlSleep(1000);
 
-     if(g_Global_Data.m_IsSetObCallback)
-        ObUnRegisterCallbacks((PVOID)g_Global_Data.m_ObRegistrationHandle);
+     if (g_Global_Data.m_IsSetObCallback)
+     {
+         ObUnRegisterCallbacks((PVOID)g_Global_Data.m_ObRegistrationHandle);
+         g_Global_Data.m_IsSetObCallback = FALSE;
+     }
 
-     if(g_Global_Data.m_IsSetPsSetLoadImage)
-        StopLoadImageRoutine();
+     if (g_Global_Data.m_IsSetPsSetLoadImage)
+     {
+         StopLoadImageRoutine();
+         g_Global_Data.m_IsSetPsSetLoadImage = FALSE;
+     }
+
+     if (g_Global_Data.m_IsInitMiniFilter)
+     {
+         UnloadMiniFilter(0);
+         g_Global_Data.m_IsInitMiniFilter = FALSE;
+     }
+         
+ }
+
+ VOID DriverUnload(PDRIVER_OBJECT pDrvObject)
+ {
+     UNICODE_STRING uSymboliclinkName = { 0x00 };
+     WCHAR lpSymboliclinkName[decltype(EncryptedDosDevicesAntiyCheatString)::Length];
+
+     DecryptString(EncryptedDosDevicesAntiyCheatString, lpSymboliclinkName);
+     
+     RtlInitUnicodeString(&uSymboliclinkName, lpSymboliclinkName);
+
+     if (g_Global_Data.m_isUnloaded == FALSE)
+         g_Global_Data.m_isUnloaded = TRUE;
+     //close Protect...
+     StopAntiCheat();
 
      LockList(&g_Global_Data.m_BlackListLock);
      KrnlRemoveBlackWhiteList(&g_Global_Data.m_BlackListHeader);
@@ -260,13 +278,14 @@ NTSTATUS FindSystemProcess(_In_ HANDLE ProcessId,
      return Status;
  }
 
- VOID AntiCheatWork(PVOID pContext)
+VOID AntiCheatWork(PVOID pContext)
  {
      NTSTATUS ntStatus = STATUS_UNSUCCESSFUL;
      LIST_ENTRY* pEntry = NULL;
      ANTI_CHEAT_PROTECT_PROCESS_DATA* ProtectData = NULL;
      PEPROCESS ProtectEprocess = NULL;
      UNICODE_STRING uProcessName = { 0x00 };
+     PVOID pObjects[2] = {0x00};
 
      __try
      {
@@ -298,6 +317,9 @@ NTSTATUS FindSystemProcess(_In_ HANDLE ProcessId,
              //Wait for the protection process to start
              KeWaitForSingleObject(&g_Global_Data.m_WaitProcessEvent, Executive, KernelMode, FALSE, NULL);
              PsSetCreateProcessNotifyRoutine(AntiCheatCreateProcessNotifyRoutine, TRUE);
+
+             //reset WaitProcessEvent...
+             KeResetEvent(&g_Global_Data.m_WaitProcessEvent);
          }
 
          //If the WaitProcessEvent is not awakened by the unload
@@ -308,6 +330,7 @@ NTSTATUS FindSystemProcess(_In_ HANDLE ProcessId,
 
              AkrOsPrint("Find Launch Protect Process:%wZ!\n", &uProcessName);
 
+             KeResetEvent(&g_Global_Data.m_ProtectProcessOverEvent);
              //General switch
              ntStatus = StartAntiyCheat();
              if (!NT_SUCCESS(ntStatus))
@@ -316,7 +339,21 @@ NTSTATUS FindSystemProcess(_In_ HANDLE ProcessId,
      }
      __finally
      {
-         PsTerminateSystemThread(ntStatus);
+         pObjects[0] = (PVOID)&g_Global_Data.m_WaitUnloadEvent;
+         pObjects[1] = (PVOID)&g_Global_Data.m_ProtectProcessOverEvent;
+         
+         KeWaitForMultipleObjects(2, pObjects, WaitAny, Executive, KernelMode, FALSE, NULL, NULL);
+
+         if (g_Global_Data.m_isUnloaded)
+         {
+             KeSetEvent(&g_Global_Data.m_WaitUnloadEvent, IO_NO_INCREMENT, FALSE);
+             PsTerminateSystemThread(ntStatus);
+         }  
+         else
+         {
+             KeResetEvent(&g_Global_Data.m_ProtectProcessOverEvent);
+             AntiCheatWork(pContext);
+         }
      }
  }
 
@@ -407,9 +444,9 @@ NTSTATUS FindSystemProcess(_In_ HANDLE ProcessId,
          g_Global_Data.m_DriverObject = pDrvObject;
          g_Global_Data.m_isUnloaded = FALSE;
 
-         KeInitializeEvent(&g_Global_Data.m_WaitUnloadEvent, NotificationEvent, FALSE);
-         KeInitializeEvent(&g_Global_Data.m_WaitProcessEvent, NotificationEvent, FALSE);
-
+         KeInitializeEvent(&g_Global_Data.m_WaitUnloadEvent, SynchronizationEvent, FALSE);
+         KeInitializeEvent(&g_Global_Data.m_WaitProcessEvent, SynchronizationEvent, FALSE);
+         KeInitializeEvent(&g_Global_Data.m_ProtectProcessOverEvent, SynchronizationEvent, FALSE);
          ntStatus = PsCreateSystemThread(&hThread, THREAD_ALL_ACCESS, NULL, NtCurrentProcess(), NULL, AntiCheatWork, NULL);
          if (!NT_SUCCESS(ntStatus))
          {

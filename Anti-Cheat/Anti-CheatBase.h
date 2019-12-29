@@ -24,6 +24,7 @@ typedef struct _ANTI_CHEAT_BLACK_WHITE_DATA
 typedef struct _ANTI_CHEAT_PROTECT_PROCESS_DATA
 {
     LIST_ENTRY m_Entry;
+    PEPROCESS m_Eprocess;
     WCHAR m_Name[MAX_PATH];
 
 }ANTI_CHEAT_PROTECT_PROCESS_DATA, *PANTI_CHEAT_PROTECT_PROCESS_DATA;
@@ -110,6 +111,7 @@ typedef struct _GLOBAL_DATA
 
     PVOID m_MFilterHandle;                      //Register MiniFilter Handle
     PDRIVER_OBJECT m_DriverObject;              //Our own driver object
+
     ERESOURCE m_WhiteListLock;                  //Resource lock when accessing a WhiteList that is owned exclusively
 
     LIST_ENTRY m_WhiteListHeader;               //WhiteList LIST_ENTRY
@@ -121,6 +123,8 @@ typedef struct _GLOBAL_DATA
     BOOLEAN m_isUnloaded;                       //Flag whether the unload operation has been performed, and if so, execute the termination thread in the guard thread
 
     KEVENT m_WaitUnloadEvent;                         //Unload events waiting for the protection thread to end completely, and continue
+
+    KEVENT m_ProtectProcessOverEvent;
 
     KEVENT m_WaitProcessEvent;                       //If the protection process is not running, it will wait, and this KEVENT is used to represent the process creation event
 
@@ -245,6 +249,18 @@ ZwProtectVirtualMemory(
 VOID
 KrnlProtectSelf(
     VOID
+);
+
+EXTERN_C
+VOID 
+StopAntiCheat(
+    VOID
+);
+
+EXTERN_C
+VOID 
+AntiCheatWork(
+    PVOID pContext
 );
 
 VOID

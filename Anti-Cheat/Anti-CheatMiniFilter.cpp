@@ -88,11 +88,10 @@ InitMiniFilter (
 
         if (!NT_SUCCESS( status )) 
         {
-
             FltUnregisterFilter((PFLT_FILTER)g_Global_Data.m_MFilterHandle);
         }
     }
-
+    
     return status;
 }
 

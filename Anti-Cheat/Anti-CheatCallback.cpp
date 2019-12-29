@@ -405,6 +405,8 @@ AntiCheatCreateProcessNotifyRoutine(
             //Find Protect.exe is Create...
             if (_wcsnicmp(uCurrentProcessName.Buffer, pProtectData->m_Name,wcslen(pProtectData->m_Name)) == 0)
             {
+                //update Eprocess Pointer...
+                pProtectData->m_Eprocess = Eprocess;
                 //Wake up waiting for
                 KeSetEvent(&g_Global_Data.m_WaitProcessEvent, IO_NO_INCREMENT, FALSE);
             }

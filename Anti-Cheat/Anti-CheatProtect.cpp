@@ -108,9 +108,35 @@ KrnlSleep(
     KeDelayExecutionThread(KernelMode, FALSE, &Timeout);
 }
 
+BOOLEAN ProtectProcessIsPresent(VOID)
+{
+    BOOLEAN bRet = TRUE;
+    LIST_ENTRY* pEntry = NULL;
+    ANTI_CHEAT_PROTECT_PROCESS_DATA* pData = NULL;
+
+    if (IsListEmpty(&g_Global_Data.m_ProtectProcessListHeader))
+        return bRet;
+    LockList(&g_Global_Data.m_ProtectProcessListLock);
+    pEntry = g_Global_Data.m_ProtectProcessListHeader.Flink;
+    pData = CONTAINING_RECORD(pEntry, ANTI_CHEAT_PROTECT_PROCESS_DATA, m_Entry);
+    if (!pData || !MmIsAddressValid(pData))
+        goto ret;
+
+    //EPROCESS->Flags.ProcessExiting is 1,Note Process is Over...
+    if ((*(UCHAR *)((UCHAR*)pData->m_Eprocess + 0x30c) & (~0xfb)) >> 2 == 1)
+        bRet = FALSE;
+
+ret:
+    UnlockList(&g_Global_Data.m_ProtectProcessListLock);
+    return bRet;
+}
+
 //A thread specifically used for detection
 VOID ProtectWorkThread(PVOID pThreadContext)
 {
+    HANDLE hThread = NULL;
+    NTSTATUS Status = STATUS_UNSUCCESSFUL;
+
     while (1)
     {
         //If DriverUnload is performed, the thread needs to be terminated first
@@ -129,6 +155,11 @@ VOID ProtectWorkThread(PVOID pThreadContext)
         {
             AkrOsPrint("PsLoadImageCallbackNotifyRoutine is Removed!\n");
             ASSERT(FALSE);
+        }
+        if (!ProtectProcessIsPresent())
+        {
+            AkrOsPrint("Protect Process is Over...!\n");
+            PsTerminateSystemThread(STATUS_SUCCESS);
         }
         //sleep 3 second
         KrnlSleep(3000);
@@ -159,7 +190,14 @@ VOID Protect(PVOID pContext)
     }
 
     KeWaitForSingleObject(pThreadObject, Executive, KernelMode, FALSE, NULL);
-    KeSetEvent(&g_Global_Data.m_WaitUnloadEvent, IO_NO_INCREMENT, FALSE);
+    if(g_Global_Data.m_isUnloaded)
+        KeSetEvent(&g_Global_Data.m_WaitUnloadEvent, IO_NO_INCREMENT, FALSE);
+    else
+    {
+        StopAntiCheat();
+        KeSetEvent(&g_Global_Data.m_ProtectProcessOverEvent, IO_NO_INCREMENT, FALSE);
+    }
+    
     ObDereferenceObject(pThreadObject);
     ZwClose(hThread);
     PsTerminateSystemThread(STATUS_SUCCESS);
