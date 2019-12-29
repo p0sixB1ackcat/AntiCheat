@@ -120,14 +120,9 @@ NTSTATUS UpdateBlackList(_Inout_ LIST_ENTRY *pBlackListHeader)
 {
     LIST_ENTRY* pEntry = NULL;
     LIST_ENTRY* pRemEntry = NULL;
-    WCHAR swDecryptBlackBone[decltype(EncryptedBlackBoneDrv10SysString)::Length] = { 0x00 };
-    WCHAR swDecryptx64Dbg[decltype(Encryptedx64dbgExeString)::Length] = { 0x00 };
     ULONG i = 0;
-
-    DecryptString(EncryptedBlackBoneDrv10SysString, swDecryptBlackBone);
-    DecryptString(Encryptedx64dbgExeString, swDecryptx64Dbg);
     
-    WCHAR* pBlackList[] = { swDecryptBlackBone,swDecryptx64Dbg ,0x00 };
+    WCHAR* pBlackList[] = { L"BlackBoneDrv10.sys", L"X64.dbg.exe" ,0x00 };
 
     if (!pBlackListHeader)
         return STATUS_INVALID_PARAMETER;
@@ -156,8 +151,6 @@ NTSTATUS UpdateBlackList(_Inout_ LIST_ENTRY *pBlackListHeader)
         InsertTailList(pBlackListHeader, &pData->m_Entry);
     }
 
-    RtlSecureZeroMemory(swDecryptBlackBone, decltype(EncryptedBlackBoneDrv10SysString)::Length);
-    RtlSecureZeroMemory(swDecryptx64Dbg, decltype(Encryptedx64dbgExeString)::Length);
     return STATUS_SUCCESS;
 }
 
@@ -188,7 +181,7 @@ NTSTATUS UpdateProtectProcessList(LIST_ENTRY* pListHeader)
 {
     LIST_ENTRY* pEntry = NULL;
     ANTI_CHEAT_PROTECT_PROCESS_DATA* pData = NULL;
-    WCHAR* ProtectNames[] = {L"csgo.exe", L"notepad.exwe", NULL};
+    WCHAR* ProtectNames[] = {L"csgo.exe", NULL};
     ULONG i = 0;
 
     if (!pListHeader)
