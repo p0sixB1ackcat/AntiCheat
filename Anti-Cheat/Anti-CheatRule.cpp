@@ -73,13 +73,16 @@ NTSTATUS UpdateWhiteList(_Inout_ LIST_ENTRY* pWhiteListHeader)
     WCHAR swDecryptedAkrosLauncherExeString[decltype(EncryptedakroslauncherExeString)::Length] = { 0x00 };
     WCHAR swDecryptedCsrssExeString[decltype(EncryptedcsrssExeString)::Length] = { 0x00 };
     WCHAR swDecryptedAkrosx86DllString[decltype(EncryptedakrosX86DllString)::Length] = { 0x00 };
+    WCHAR swDecryptedSteamExeString[decltype(EncryptedsteamExeString)::Length] = { 0x00 };
+
 
     DecryptString(EncryptedakrosExeString, swDecryptedAkrosExeString);
     DecryptString(EncryptedakroslauncherExeString, swDecryptedAkrosLauncherExeString);
     DecryptString(EncryptedcsrssExeString, swDecryptedCsrssExeString);
     DecryptString(EncryptedakrosX86DllString, swDecryptedAkrosx86DllString);
+    DecryptString(EncryptedsteamExeString, swDecryptedSteamExeString);
 
-    WCHAR* pWhiteListBuffer[] = {swDecryptedAkrosExeString, swDecryptedAkrosLauncherExeString,  swDecryptedCsrssExeString, swDecryptedAkrosx86DllString, 0x00};
+    WCHAR* pWhiteListBuffer[] = {swDecryptedAkrosExeString, swDecryptedAkrosLauncherExeString,  swDecryptedCsrssExeString, swDecryptedAkrosx86DllString, swDecryptedSteamExeString, 0x00};
 
     do
     {
@@ -112,6 +115,7 @@ NTSTATUS UpdateWhiteList(_Inout_ LIST_ENTRY* pWhiteListHeader)
     RtlSecureZeroMemory(swDecryptedAkrosLauncherExeString, decltype(EncryptedakroslauncherExeString)::Length);
     RtlSecureZeroMemory(swDecryptedCsrssExeString, decltype(EncryptedcsrssExeString)::Length);
     RtlSecureZeroMemory(swDecryptedAkrosx86DllString, decltype(EncryptedakrosX86DllString)::Length);
+    RtlSecureZeroMemory(swDecryptedSteamExeString, decltype(EncryptedsteamExeString)::Length);
 
     return Status;
 }
@@ -122,7 +126,7 @@ NTSTATUS UpdateBlackList(_Inout_ LIST_ENTRY *pBlackListHeader)
     LIST_ENTRY* pRemEntry = NULL;
     ULONG i = 0;
     
-    WCHAR* pBlackList[] = { L"BlackBoneDrv10.sys", L"X64.dbg.exe" ,0x00 };
+    WCHAR* pBlackList[] = { L"BlackBoneDrv10.sys", L"X64.dbg.exe", L"kprocesshacker.sys" ,0x00 };
 
     if (!pBlackListHeader)
         return STATUS_INVALID_PARAMETER;
