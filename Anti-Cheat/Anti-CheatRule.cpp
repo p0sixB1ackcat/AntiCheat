@@ -183,7 +183,6 @@ VOID KrnlRemoveProtectProcessList(LIST_ENTRY* pListHeader)
 
 NTSTATUS UpdateProtectProcessList(LIST_ENTRY* pListHeader)
 {
-    LIST_ENTRY* pEntry = NULL;
     ANTI_CHEAT_PROTECT_PROCESS_DATA* pData = NULL;
     WCHAR* ProtectNames[] = {L"csgo.exe", NULL};
     ULONG i = 0;

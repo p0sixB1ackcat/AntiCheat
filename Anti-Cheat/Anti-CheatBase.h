@@ -4,6 +4,7 @@
 #include <ntstrsafe.h>
 #include <fltKernel.h>
 #include "Native/NativeStructs.h"
+#include "BlackBone/Private.h"
 
 #define MAX_PATH 260
 //Control Code
@@ -111,6 +112,8 @@ typedef struct _GLOBAL_DATA
 
     PVOID m_MFilterHandle;                      //Register MiniFilter Handle
     PDRIVER_OBJECT m_DriverObject;              //Our own driver object
+
+    LARGE_INTEGER m_CmRegisterCallbackCookie;   
 
     ERESOURCE m_WhiteListLock;                  //Resource lock when accessing a WhiteList that is owned exclusively
 

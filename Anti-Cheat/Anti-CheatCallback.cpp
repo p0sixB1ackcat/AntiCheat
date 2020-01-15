@@ -9,6 +9,8 @@ AntiCheatOBPreOperationCallback(
     _Inout_ POB_PRE_OPERATION_INFORMATION OperationInformation
 )
 {
+    UNREFERENCED_PARAMETER(RegistrationContext);
+
     NTSTATUS Status = OB_PREOP_SUCCESS;
     DECLARE_UNICODE_STRING_SIZE(pTargetProcName, 260);
     DECLARE_UNICODE_STRING_SIZE(pCurrentProcName, 260);
@@ -97,6 +99,9 @@ AntiCheatOBPreOperationCallback(
 
 NTSTATUS Hook_DriverEntryPointer(PDRIVER_OBJECT* pDriverObject, UNICODE_STRING* pRegPath)
 {
+    UNREFERENCED_PARAMETER(pDriverObject);
+    UNREFERENCED_PARAMETER(pRegPath);
+
     return STATUS_UNSUCCESSFUL;
 }
 
@@ -147,7 +152,7 @@ AnticheatLoadImageRoutine(
     }
 
     RtlInitUnicodeString(&uImageName, szImageName);
-    uImageName.Length = ImageNameSize;
+    uImageName.Length = (USHORT)ImageNameSize;
 
     pDos = (IMAGE_DOS_HEADER*)ImageInfo->ImageBase;
     if (!MmIsAddressValid(pDos) || pDos->e_magic != IMAGE_DOS_SIGNATURE)
@@ -176,6 +181,14 @@ AnticheatLoadImageRoutine(
 
             ImageEntryPointer = (PVOID)(ULONG_PTR)(pNt->OptionalHeader.ImageBase + pNt->OptionalHeader.AddressOfEntryPoint);
 
+            if (!MmIsAddressValid(ImageEntryPointer))
+            {
+                ImageEntryPointer = (PVOID)((ULONG_PTR)pDos + pNt->OptionalHeader.AddressOfEntryPoint);
+                if (!MmIsAddressValid(ImageEntryPointer))
+                    goto finish;
+            }
+
+            //Map the physical address to a new virtual address, and then write to that virtual address...
             pMdl = IoAllocateMdl(ImageEntryPointer, Size, FALSE, FALSE, NULL);
             if (!pMdl)
                 goto finish;
@@ -192,6 +205,7 @@ AnticheatLoadImageRoutine(
             }
             if (pNewMapVa)
             {
+                //Override DriverEntry in the blacklist
                 RtlCopyMemory(pNewMapVa, Hook_DriverEntryPointer, 0x10);
                 MmUnmapLockedPages(pNewMapVa, pMdl);
             }
@@ -360,11 +374,11 @@ AntiCheatCreateProcessNotifyRoutine(
     _In_ BOOLEAN Create
 )
 {
+    UNREFERENCED_PARAMETER(ParentId);
     NTSTATUS Status = STATUS_UNSUCCESSFUL;
     PEPROCESS Eprocess = NULL;
     KAPC_STATE kApc = { 0x00 };
     DECLARE_UNICODE_STRING_SIZE(uCurrentProcessName, MAX_PATH);
-    ULONG dwRet = 0;
     LIST_ENTRY* pEntry = NULL;
     ANTI_CHEAT_PROTECT_PROCESS_DATA* pProtectData = NULL;
     
@@ -417,4 +431,22 @@ AntiCheatCreateProcessNotifyRoutine(
             ObDereferenceObject(Eprocess);
     }
 
+}
+
+_IRQL_requires_same_
+_Function_class_(AntiCheatRegTabCallback)
+NTSTATUS
+AntiCheatRegTabCallback(
+    _In_ PVOID CallbackContext,
+    _In_opt_ PVOID Argument1,
+    _In_opt_ PVOID Argument2
+)
+{
+    UNREFERENCED_PARAMETER(CallbackContext);
+    UNREFERENCED_PARAMETER(Argument1);
+    UNREFERENCED_PARAMETER(Argument2);
+
+    NTSTATUS ntStatus = STATUS_SUCCESS;
+
+    return ntStatus;
 }

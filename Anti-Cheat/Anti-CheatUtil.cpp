@@ -100,7 +100,7 @@ KrnlGetImageNameByPathA(
 {
     NTSTATUS ntStatus = STATUS_NOT_FOUND;
     UCHAR* pName = NULL;
-    ULONG dwQueryLen = 0;
+    SIZE_T dwQueryLen = 0;
 
     if (!pQueryString || !pImageName || !pLen)
         return ntStatus;
@@ -124,6 +124,8 @@ KrnlGetImageNameByPathA(
 
 NTSTATUS KrnlGetProcessName(_In_ PEPROCESS Eprocess,_Out_ UNICODE_STRING *ProcessName)
 {
+    UNREFERENCED_PARAMETER(Eprocess);
+
     NTSTATUS Status = STATUS_OBJECTID_NOT_FOUND;
     KAPC_STATE kapc = { 0x00 };
     ULONG dwRet = 0;
@@ -210,14 +212,20 @@ void LookupList(LIST_ENTRY* pListHeader)
 
 BOOLEAN KrnlCheckPE(VOID* ImageBase, SIZE_T ImageSize)
 {
+    IMAGE_DOS_HEADER* pDos = NULL;
+    IMAGE_NT_HEADERS* pNt = NULL;
+
     if (ImageBase == NULL || ImageSize == 0)
         return FALSE;
 
-    IMAGE_DOS_HEADER* pDos = (IMAGE_DOS_HEADER*)ImageBase;
-    IMAGE_NT_HEADERS* pNt = (IMAGE_NT_HEADERS*)((ULONG_PTR)ImageBase + pDos->e_lfanew);
-    if (pDos->e_magic != IMAGE_DOS_SIGNATURE)
+    pDos = (IMAGE_DOS_HEADER*)ImageBase;
+
+    if (!MmIsAddressValid(pDos) || pDos->e_magic != IMAGE_DOS_SIGNATURE)
         return FALSE;
-    if (pNt->Signature != IMAGE_NT_SIGNATURE)
+
+    pNt = (IMAGE_NT_HEADERS*)((ULONG_PTR)ImageBase + pDos->e_lfanew);
+    
+    if (!MmIsAddressValid(pNt) || pNt->Signature != IMAGE_NT_SIGNATURE)
         return FALSE;
 
     return TRUE;

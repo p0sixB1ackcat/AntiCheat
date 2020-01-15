@@ -5,6 +5,7 @@
 #include "strings.h"
 
 GLOBAL_DATA g_Global_Data = { 0x00 };
+SYSTEM_DYNAMIC_DATA g_System_Dynamic_Data;
 
 #ifdef __cplusplus
 extern "C"
@@ -18,6 +19,8 @@ NTSTATUS FindSystemProcess(_In_ HANDLE ProcessId,
     PSYSTEM_PROCESS_INFORMATION pProcInfo = NULL;
     PSYSTEM_PROCESS_INFORMATION pCurrentProcInfo = NULL;
     ULONG dwRet = 0;
+    LIST_ENTRY* pEntry = NULL;
+    ANTI_CHEAT_PROTECT_PROCESS_DATA* pCheatData;
 
     do
     {
@@ -67,11 +70,43 @@ NTSTATUS FindSystemProcess(_In_ HANDLE ProcessId,
                 if (pCurrentProcInfo->ImageName.Buffer != NULL &&
                     RtlCompareUnicodeString(&pCurrentProcInfo->ImageName, ProcessName, FALSE) == 0)
                 {
-                    ntStatus = PsLookupProcessByProcessId(pCurrentProcInfo->UniqueProcessId,pSystemProcess);
+                    ntStatus = PsLookupProcessByProcessId(pCurrentProcInfo->UniqueProcessId, pSystemProcess);
                     if (!NT_SUCCESS(ntStatus))
                         break;
 
-                    ntStatus = STATUS_SUCCESS;
+                    LockList(&g_Global_Data.m_ProtectProcessListLock);
+
+                    do 
+                    {
+                        if (IsListEmpty(&g_Global_Data.m_ProtectProcessListHeader))
+                        {
+                            ntStatus = STATUS_NOT_FOUND;
+                            break;
+                        }
+
+                        pEntry = g_Global_Data.m_ProtectProcessListHeader.Flink;
+                        if (!pEntry || !MmIsAddressValid(pEntry))
+                        {
+                            ntStatus = STATUS_NOT_FOUND;
+                            break;
+                        }
+
+                        pCheatData = CONTAINING_RECORD(pEntry, ANTI_CHEAT_PROTECT_PROCESS_DATA, m_Entry);
+                        if (!pCheatData || !MmIsAddressValid(pCheatData))
+                        {
+                            ntStatus = STATUS_NOT_FOUND;
+                            break;
+                        }
+
+                        pCheatData->m_Eprocess = *pSystemProcess;
+
+                        ntStatus = STATUS_SUCCESS;
+
+                    } while (FALSE);
+
+                    
+                    UnlockList(&g_Global_Data.m_ProtectProcessListLock);
+                    
                     break;
                 }
             }
@@ -92,6 +127,8 @@ NTSTATUS FindSystemProcess(_In_ HANDLE ProcessId,
  //Generic distribution function
  NTSTATUS DispatchCommon(PDEVICE_OBJECT pDeviceObject, PIRP pIrp)
  {
+     UNREFERENCED_PARAMETER(pDeviceObject);
+
      NTSTATUS ntStatus = STATUS_SUCCESS;
      pIrp->IoStatus.Status = ntStatus;
      pIrp->IoStatus.Information = 0;
@@ -106,26 +143,48 @@ NTSTATUS FindSystemProcess(_In_ HANDLE ProcessId,
      return PsSetLoadImageNotifyRoutine(AnticheatLoadImageRoutine);
  }
 
+ VOID RemoveObCallback()
+ {
+     ObUnRegisterCallbacks((PVOID)g_Global_Data.m_ObRegistrationHandle);
+     g_Global_Data.m_IsSetObCallback = FALSE;
+ }
+
  NTSTATUS StopLoadImageRoutine()
  {
-     return PsRemoveLoadImageNotifyRoutine(AnticheatLoadImageRoutine);
+     NTSTATUS Status = STATUS_UNSUCCESSFUL;
+     Status = PsRemoveLoadImageNotifyRoutine(AnticheatLoadImageRoutine);
+     if (NT_SUCCESS(Status))
+     {
+         g_Global_Data.m_IsSetPsSetLoadImage = FALSE;
+     }
+     return Status;
+ }
+
+ NTSTATUS UnCmRegister(VOID)
+ {
+     NTSTATUS ntStatus = STATUS_SUCCESS;
+
+     ntStatus = CmUnRegisterCallback(g_Global_Data.m_CmRegisterCallbackCookie);
+     if (NT_SUCCESS(ntStatus))
+     {
+         g_Global_Data.m_CmRegisterCallbackCookie.QuadPart = 0;
+     }
+     return ntStatus;
  }
 
  VOID StopObRegisterCallback(VOID)
  {
      ObUnRegisterCallbacks(g_Global_Data.m_ObRegistrationHandle);
+     g_Global_Data.m_IsSetObCallback = FALSE;
  }
 
  NTSTATUS DispatchIoControl(PDEVICE_OBJECT pDevicceObject, PIRP pIrp)
  {
+     UNREFERENCED_PARAMETER(pDevicceObject);
+
      NTSTATUS ntStatus = STATUS_SUCCESS;
      IO_STACK_LOCATION* pCurrentIrpStack = IoGetCurrentIrpStackLocation(pIrp);
      ULONG dwControlCode = pCurrentIrpStack->Parameters.DeviceIoControl.IoControlCode;
-     WCHAR *pSystemInputBuffer = (WCHAR *)pIrp->AssociatedIrp.SystemBuffer;
-     ULONG dwSystemInputSize = pCurrentIrpStack->Parameters.DeviceIoControl.InputBufferLength;
-     ULONG_PTR H_KeUserModuleCallback = 0;
-     ULONG_PTR Original_KeUserModuleCallback = 0;
-     PEPROCESS pEprocess = NULL;
      KAPC_STATE kApcState = { 0x00 };
 
      //Execute different logicand parse different SystemBuffers according to different control codes
@@ -149,8 +208,9 @@ NTSTATUS FindSystemProcess(_In_ HANDLE ProcessId,
      if (g_Global_Data.m_isUnloaded)
      {
          //Only if everything is initialized successfully,Indicates that the protection thread is open and needs to wait for unloading
-         if (g_Global_Data.m_IsInitMiniFilter &&
-             g_Global_Data.m_IsSetObCallback &&
+
+         //for g_Global_Data.m_IsInitMiniFilter, FltUnRegisterFilter,This is set to FALSE, so don't need to judge this field   
+         if (g_Global_Data.m_IsSetObCallback &&
              g_Global_Data.m_IsSetPsSetLoadImage)
          {
              //Before uninstalling, close the detection thread, and after confirming that it is closed, perform subsequent work
@@ -168,22 +228,20 @@ NTSTATUS FindSystemProcess(_In_ HANDLE ProcessId,
 
      if (g_Global_Data.m_IsSetObCallback)
      {
-         ObUnRegisterCallbacks((PVOID)g_Global_Data.m_ObRegistrationHandle);
-         g_Global_Data.m_IsSetObCallback = FALSE;
+         RemoveObCallback();
      }
-
      if (g_Global_Data.m_IsSetPsSetLoadImage)
      {
          StopLoadImageRoutine();
-         g_Global_Data.m_IsSetPsSetLoadImage = FALSE;
      }
-
      if (g_Global_Data.m_IsInitMiniFilter)
      {
          UnloadMiniFilter(0);
-         g_Global_Data.m_IsInitMiniFilter = FALSE;
      }
-         
+     if (g_Global_Data.m_CmRegisterCallbackCookie.QuadPart != 0)
+     {
+         UnCmRegister();
+     }
  }
 
  VOID DriverUnload(PDRIVER_OBJECT pDrvObject)
@@ -212,10 +270,10 @@ NTSTATUS FindSystemProcess(_In_ HANDLE ProcessId,
      KrnlRemoveProtectProcessList(&g_Global_Data.m_ProtectProcessListHeader);
      UnlockList(&g_Global_Data.m_ProtectProcessListLock);
 
-     ExDeleteResource(&g_Global_Data.m_WhiteListLock);
-     ExDeleteResource(&g_Global_Data.m_BlackListLock);
-     ExDeleteResource(&g_Global_Data.m_ProtectProcessListLock);
-
+     ExDeleteResourceLite(&g_Global_Data.m_WhiteListLock);
+     ExDeleteResourceLite(&g_Global_Data.m_BlackListLock);
+     ExDeleteResourceLite(&g_Global_Data.m_ProtectProcessListLock);
+     
      IoDeleteSymbolicLink(&uSymboliclinkName);
      IoDeleteDevice(pDrvObject->DeviceObject);
 
@@ -229,8 +287,6 @@ NTSTATUS FindSystemProcess(_In_ HANDLE ProcessId,
      DECLARE_UNICODE_STRING_SIZE(uAltitude, MAX_PATH);
      NTSTATUS Status = STATUS_UNSUCCESSFUL;
      UNICODE_STRING uSystemProcessName = { 0x00 };
-     PEPROCESS pEprocess = NULL;
-     HANDLE RegHandle = NULL;
      OB_CALLBACK_REGISTRATION obCallBackReg = { 0x00 };
      OB_OPERATION_REGISTRATION obOperationReg = { 0x00 };
      
@@ -267,6 +323,13 @@ NTSTATUS FindSystemProcess(_In_ HANDLE ProcessId,
          g_Global_Data.m_IsSetObCallback = TRUE;
 
          Status = StartLoadImageRoutine();
+         if (!NT_SUCCESS(Status))
+             break;
+
+         Status = CmRegisterCallback(AntiCheatRegTabCallback,
+             NULL, 
+             &g_Global_Data.m_CmRegisterCallbackCookie
+         );
          if (!NT_SUCCESS(Status))
              break;
 
@@ -313,13 +376,10 @@ VOID AntiCheatWork(PVOID pContext)
              PsSetCreateProcessNotifyRoutine(AntiCheatCreateProcessNotifyRoutine, FALSE);
 
              AkrOsPrint("Wait Protect %wZ..........!\n", &uProcessName);
-
+              
              //Wait for the protection process to start
              KeWaitForSingleObject(&g_Global_Data.m_WaitProcessEvent, Executive, KernelMode, FALSE, NULL);
              PsSetCreateProcessNotifyRoutine(AntiCheatCreateProcessNotifyRoutine, TRUE);
-
-             //reset WaitProcessEvent...
-             KeResetEvent(&g_Global_Data.m_WaitProcessEvent);
          }
 
          //If the WaitProcessEvent is not awakened by the unload
@@ -330,7 +390,6 @@ VOID AntiCheatWork(PVOID pContext)
 
              AkrOsPrint("Find Launch Protect Process:%wZ!\n", &uProcessName);
 
-             KeResetEvent(&g_Global_Data.m_ProtectProcessOverEvent);
              //General switch
              ntStatus = StartAntiyCheat();
              if (!NT_SUCCESS(ntStatus))
@@ -351,7 +410,6 @@ VOID AntiCheatWork(PVOID pContext)
          }  
          else
          {
-             KeResetEvent(&g_Global_Data.m_ProtectProcessOverEvent);
              AntiCheatWork(pContext);
          }
      }
@@ -365,6 +423,9 @@ VOID AntiCheatWork(PVOID pContext)
  */
  NTSTATUS DriverEntry(PDRIVER_OBJECT pDrvObject, PUNICODE_STRING pRegPath)
  {
+     UNREFERENCED_PARAMETER(pRegPath);
+     DECLARE_CONST_UNICODE_STRING(uExAcquirePushLockExclusiveEx, L"ExfAcquirePushLockExclusive");
+     
      NTSTATUS ntStatus = STATUS_UNSUCCESSFUL;
      ULONG i;
      UNICODE_STRING uDeviceName = { 0x00 };
@@ -373,6 +434,8 @@ VOID AntiCheatWork(PVOID pContext)
      WCHAR lpDeviceName[decltype(EncryptedDeviceAntiyCheatString)::Length];
      WCHAR lpSymboliclinkName[decltype(EncryptedDosDevicesAntiyCheatString)::Length];
      HANDLE hThread = NULL;
+     
+     AkrOsPrint("ExfAcquirePushLockExclusive Function Address is 0x%x!\n", MmGetSystemRoutineAddress((PUNICODE_STRING)&uExAcquirePushLockExclusiveEx));
 
      do
      {
@@ -415,13 +478,17 @@ VOID AntiCheatWork(PVOID pContext)
          pDrvObject->DriverUnload = DriverUnload;
 
          InitializeListHead(&g_Global_Data.m_WhiteListHeader);
-         ExInitializeResource(&g_Global_Data.m_WhiteListLock);
+         ExInitializeResourceLite (&g_Global_Data.m_WhiteListLock);
 
          InitializeListHead(&g_Global_Data.m_BlackListHeader);
-         ExInitializeResource(&g_Global_Data.m_BlackListLock);
+         ExInitializeResourceLite(&g_Global_Data.m_BlackListLock);
 
          InitializeListHead(&g_Global_Data.m_ProtectProcessListHeader);
-         ExInitializeResource(&g_Global_Data.m_ProtectProcessListLock);
+         ExInitializeResourceLite (&g_Global_Data.m_ProtectProcessListLock);
+
+         //init System Data...
+         RtlZeroMemory(&g_System_Dynamic_Data, sizeof(SYSTEM_DYNAMIC_DATA));
+         InitDynamicData(&g_System_Dynamic_Data);
 
          //setup Whitelist...
          LockList(&g_Global_Data.m_WhiteListLock);
@@ -443,6 +510,7 @@ VOID AntiCheatWork(PVOID pContext)
 
          g_Global_Data.m_DriverObject = pDrvObject;
          g_Global_Data.m_isUnloaded = FALSE;
+         g_Global_Data.m_CmRegisterCallbackCookie = { 0x00 };
 
          KeInitializeEvent(&g_Global_Data.m_WaitUnloadEvent, SynchronizationEvent, FALSE);
          KeInitializeEvent(&g_Global_Data.m_WaitProcessEvent, SynchronizationEvent, FALSE);
@@ -472,6 +540,61 @@ VOID AntiCheatWork(PVOID pContext)
      }
      return ntStatus;
  }
+
+ NTSTATUS InitDynamicData(_Out_ PSYSTEM_DYNAMIC_DATA pData)
+ {
+     NTSTATUS ntStatus = STATUS_UNSUCCESSFUL;
+     OSVERSIONINFOEXW VersionInfo = { sizeof(OSVERSIONINFOEXW) };
+     ULONG ShortVersion = 0;
+
+     do 
+     {
+         ntStatus = RtlGetVersion((PRTL_OSVERSIONINFOW)&VersionInfo);
+         if (!NT_SUCCESS(ntStatus))
+         {
+             break;
+         }
+
+         ShortVersion = (VersionInfo.dwMajorVersion << 8) | (VersionInfo.dwMinorVersion << 4) | (VersionInfo.wServicePackMajor);
+         
+         pData->Version = (_WinVer)ShortVersion;
+
+         if (ShortVersion < WINVER_7)
+         {
+             ntStatus = STATUS_NOT_SUPPORTED;
+             break;
+         }
+
+         switch (ShortVersion)
+         {
+             case WINVER_7:
+             {
+                 
+             }
+             break;
+             case WINVER_81:
+             {
+                 pData->EProcessFlagsOffset = 0x2fc;
+             }
+             break;
+             case WINVER_10:
+             {
+                 if (VersionInfo.dwBuildNumber >= 18362)
+                 {
+                     pData->EProcessFlagsOffset = 0x30c;
+                 }
+                 
+             }
+             break;
+         }
+
+
+     } while (FALSE);
+     
+
+     return ntStatus;
+ }
+
 #endif
 
 #ifdef __cplusplus

@@ -20,6 +20,9 @@
     <Filter Include="Header Files\Native">
       <UniqueIdentifier>{227178ce-123f-42d2-b69c-2c1d87d9631f}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\BlackBone">
+      <UniqueIdentifier>{2545236a-9db4-4bf3-8b47-2b947d2b18bd}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <Inf Include="Anti-Cheat.inf">
@@ -87,6 +90,9 @@
     </ClInclude>
     <ClInclude Include="zwapi.h">
       <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="BlackBone\Private.h">
+      <Filter>Header Files\BlackBone</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

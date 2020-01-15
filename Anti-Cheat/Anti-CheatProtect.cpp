@@ -11,7 +11,7 @@ BOOLEAN KrnlCheckLoadImageNorifyRoutineCallback(VOID)
     ULONG_PTR *pCallback = NULL;
     NTSTATUS Status = STATUS_SUCCESS;
     ULONG i;
-
+    
     do
     {
         Status = KrnlGetPspLoadImageNotifyRoutine((PULONG_PTR)&PspLoadImageNotifyRoutines);
@@ -48,6 +48,7 @@ BOOLEAN KrnlCheckLoadImageNorifyRoutineCallback(VOID)
 
 
 extern GLOBAL_DATA g_Global_Data;
+extern SYSTEM_DYNAMIC_DATA g_System_Dynamic_Data;
 
 BOOLEAN KrnlCheckObCallbackRoutine(PVOID pObRegistrationHandle)
 {
@@ -77,8 +78,6 @@ BOOLEAN KrnlCheckObCallbackRoutine(PVOID pObRegistrationHandle)
                 Blink->Flink == pEntry)
             {
                 bRemObCallBackRoutine = FALSE;
-                ExReleasePushLockExclusiveEx((PULONG_PTR)&((OBJECT_TYPE*)pCallbackBody->pObjectType)->TypeLock, 0);
-                break;
             }
             ExReleasePushLockExclusiveEx((PULONG_PTR)&((OBJECT_TYPE*)pCallbackBody->pObjectType)->TypeLock, 0);
         }
@@ -121,9 +120,11 @@ BOOLEAN ProtectProcessIsPresent(VOID)
     pData = CONTAINING_RECORD(pEntry, ANTI_CHEAT_PROTECT_PROCESS_DATA, m_Entry);
     if (!pData || !MmIsAddressValid(pData))
         goto ret;
-
-    //EPROCESS->Flags.ProcessExiting is 1,Note Process is Over...
-    if ((*(UCHAR *)((UCHAR*)pData->m_Eprocess + 0x30c) & (~0xfb)) >> 2 == 1)
+    if (!pData->m_Eprocess || !MmIsAddressValid(pData->m_Eprocess))
+        goto ret;
+    //EPROCESS->Flags == 0 (WIN8.1) || EPROCESS->Flags.ProcessExiting is 1 (WIN10),Note Process is Over...
+    if (*(ULONG *)((PUCHAR)pData->m_Eprocess + g_System_Dynamic_Data.EProcessFlags2Offset) == 0 ||
+        (*(UCHAR *)((UCHAR*)pData->m_Eprocess + g_System_Dynamic_Data.EProcessFlagsOffset) & (~0xfb)) >> 2 == 1)
         bRet = FALSE;
 
 ret:
@@ -134,8 +135,7 @@ ret:
 //A thread specifically used for detection
 VOID ProtectWorkThread(PVOID pThreadContext)
 {
-    HANDLE hThread = NULL;
-    NTSTATUS Status = STATUS_UNSUCCESSFUL;
+    UNREFERENCED_PARAMETER(pThreadContext);
 
     while (1)
     {
@@ -159,8 +159,18 @@ VOID ProtectWorkThread(PVOID pThreadContext)
         if (!ProtectProcessIsPresent())
         {
             AkrOsPrint("Protect Process is Over...!\n");
+
+            //reset Unload Function...
+            g_Global_Data.m_DriverObject->DriverUnload = DriverUnload;
             PsTerminateSystemThread(STATUS_SUCCESS);
         }
+
+        //Find Protect Process.exe, Don't Unload...
+        if (g_Global_Data.m_DriverObject->DriverUnload != NULL)
+        {
+            g_Global_Data.m_DriverObject->DriverUnload = NULL;
+        }
+
         //sleep 3 second
         KrnlSleep(3000);
     }
@@ -168,6 +178,8 @@ VOID ProtectWorkThread(PVOID pThreadContext)
 
 VOID Protect(PVOID pContext)
 {
+    UNREFERENCED_PARAMETER(pContext);
+
     NTSTATUS Status = STATUS_UNSUCCESSFUL;
     HANDLE hThread = NULL;
     PVOID pThreadObject = NULL;
@@ -208,7 +220,6 @@ VOID KrnlProtectSelf(VOID)
 {
     NTSTATUS Status = STATUS_UNSUCCESSFUL;
     HANDLE hThread = NULL;
-    PVOID pThreadObject = NULL;
 
     Status = PsCreateSystemThread(&hThread,
         0,

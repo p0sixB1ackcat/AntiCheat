@@ -83,7 +83,6 @@ InitMiniFilter (
 
     if (NT_SUCCESS( status )) 
     {
-
         status = FltStartFiltering( (PFLT_FILTER)g_Global_Data.m_MFilterHandle );
 
         if (!NT_SUCCESS( status )) 
@@ -107,8 +106,12 @@ UnloadMiniFilter (
     PT_DBG_PRINT( PTDBG_TRACE_ROUTINES,
                   ("AntiCheat!AntiCheatUnload: Entered\n") );
 
-    if((PFLT_FILTER)g_Global_Data.m_MFilterHandle)
+    if ((PFLT_FILTER)g_Global_Data.m_MFilterHandle &&
+        g_Global_Data.m_IsInitMiniFilter)
+    {
         FltUnregisterFilter((PFLT_FILTER)g_Global_Data.m_MFilterHandle);
+        g_Global_Data.m_IsInitMiniFilter = FALSE;
+    }
 
     return STATUS_SUCCESS;
 }
