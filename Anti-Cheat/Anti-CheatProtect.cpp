@@ -68,8 +68,11 @@ BOOLEAN KrnlCheckObCallbackRoutine(PVOID pObRegistrationHandle)
             pCallbackBody = &pCallbackNode->CallbackBodies[i];
 
             //Before access, the spin lock is exclusive
+#if NTDDI_VERSION >= NTDDI_WIN8
             ExAcquirePushLockExclusiveEx((PULONG_PTR)&(((OBJECT_TYPE*)pCallbackBody->pObjectType)->TypeLock), 0);
+#else
 
+#endif //NTDDI_VERSION >= WINVER_8
             //Determine if our callbackbody->ListEntry.flink->Blink & callbackbody->ListEntry.Blink->Flink is pointing to ourselves
             Flink = pCallbackBody->ListEntry.Flink;
             Blink = pCallbackBody->ListEntry.Blink;
@@ -79,7 +82,10 @@ BOOLEAN KrnlCheckObCallbackRoutine(PVOID pObRegistrationHandle)
             {
                 bRemObCallBackRoutine = FALSE;
             }
+#if NTDDI_VERSION >= NTDDI_WIN8
             ExReleasePushLockExclusiveEx((PULONG_PTR)&((OBJECT_TYPE*)pCallbackBody->pObjectType)->TypeLock, 0);
+#else
+#endif //NTDDI_VERSION >= NTDDI_WIN8
         }
     }
 

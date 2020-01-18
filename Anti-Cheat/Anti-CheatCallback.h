@@ -48,12 +48,4 @@ AntiCheatCreateProcessNotifyRoutine(
     _In_ BOOLEAN Create
 );
 
-_IRQL_requires_same_
-_Function_class_(AntiCheatRegTabCallback)
-NTSTATUS
-AntiCheatRegTabCallback(
-    _In_ PVOID CallbackContext,
-    _In_opt_ PVOID Argument1,
-    _In_opt_ PVOID Argument2
-);
 

@@ -160,18 +160,6 @@ NTSTATUS FindSystemProcess(_In_ HANDLE ProcessId,
      return Status;
  }
 
- NTSTATUS UnCmRegister(VOID)
- {
-     NTSTATUS ntStatus = STATUS_SUCCESS;
-
-     ntStatus = CmUnRegisterCallback(g_Global_Data.m_CmRegisterCallbackCookie);
-     if (NT_SUCCESS(ntStatus))
-     {
-         g_Global_Data.m_CmRegisterCallbackCookie.QuadPart = 0;
-     }
-     return ntStatus;
- }
-
  VOID StopObRegisterCallback(VOID)
  {
      ObUnRegisterCallbacks(g_Global_Data.m_ObRegistrationHandle);
@@ -237,10 +225,6 @@ NTSTATUS FindSystemProcess(_In_ HANDLE ProcessId,
      if (g_Global_Data.m_IsInitMiniFilter)
      {
          UnloadMiniFilter(0);
-     }
-     if (g_Global_Data.m_CmRegisterCallbackCookie.QuadPart != 0)
-     {
-         UnCmRegister();
      }
  }
 
@@ -323,13 +307,6 @@ NTSTATUS FindSystemProcess(_In_ HANDLE ProcessId,
          g_Global_Data.m_IsSetObCallback = TRUE;
 
          Status = StartLoadImageRoutine();
-         if (!NT_SUCCESS(Status))
-             break;
-
-         Status = CmRegisterCallback(AntiCheatRegTabCallback,
-             NULL, 
-             &g_Global_Data.m_CmRegisterCallbackCookie
-         );
          if (!NT_SUCCESS(Status))
              break;
 
@@ -424,8 +401,7 @@ VOID AntiCheatWork(PVOID pContext)
  NTSTATUS DriverEntry(PDRIVER_OBJECT pDrvObject, PUNICODE_STRING pRegPath)
  {
      UNREFERENCED_PARAMETER(pRegPath);
-     DECLARE_CONST_UNICODE_STRING(uExAcquirePushLockExclusiveEx, L"ExfAcquirePushLockExclusive");
-     
+
      NTSTATUS ntStatus = STATUS_UNSUCCESSFUL;
      ULONG i;
      UNICODE_STRING uDeviceName = { 0x00 };
@@ -434,8 +410,6 @@ VOID AntiCheatWork(PVOID pContext)
      WCHAR lpDeviceName[decltype(EncryptedDeviceAntiyCheatString)::Length];
      WCHAR lpSymboliclinkName[decltype(EncryptedDosDevicesAntiyCheatString)::Length];
      HANDLE hThread = NULL;
-     
-     AkrOsPrint("ExfAcquirePushLockExclusive Function Address is 0x%x!\n", MmGetSystemRoutineAddress((PUNICODE_STRING)&uExAcquirePushLockExclusiveEx));
 
      do
      {
@@ -510,7 +484,6 @@ VOID AntiCheatWork(PVOID pContext)
 
          g_Global_Data.m_DriverObject = pDrvObject;
          g_Global_Data.m_isUnloaded = FALSE;
-         g_Global_Data.m_CmRegisterCallbackCookie = { 0x00 };
 
          KeInitializeEvent(&g_Global_Data.m_WaitUnloadEvent, SynchronizationEvent, FALSE);
          KeInitializeEvent(&g_Global_Data.m_WaitProcessEvent, SynchronizationEvent, FALSE);
@@ -568,8 +541,9 @@ VOID AntiCheatWork(PVOID pContext)
          switch (ShortVersion)
          {
              case WINVER_7:
+             case WINVER_7_SP1:
              {
-                 
+                 pData->EProcessFlagsOffset = 0x440;
              }
              break;
              case WINVER_81:
@@ -579,11 +553,16 @@ VOID AntiCheatWork(PVOID pContext)
              break;
              case WINVER_10:
              {
-                 if (VersionInfo.dwBuildNumber >= 18362)
+                 if (VersionInfo.dwBuildNumber == 16299 ||
+                     VersionInfo.dwBuildNumber == 17134 || 
+                     VersionInfo.dwBuildNumber == 17763)
+                 {
+                     pData->EProcessFlagsOffset = 0x304;
+                 }
+                 else if (VersionInfo.dwBuildNumber >= 18362)
                  {
                      pData->EProcessFlagsOffset = 0x30c;
                  }
-                 
              }
              break;
          }

@@ -432,21 +432,3 @@ AntiCheatCreateProcessNotifyRoutine(
     }
 
 }
-
-_IRQL_requires_same_
-_Function_class_(AntiCheatRegTabCallback)
-NTSTATUS
-AntiCheatRegTabCallback(
-    _In_ PVOID CallbackContext,
-    _In_opt_ PVOID Argument1,
-    _In_opt_ PVOID Argument2
-)
-{
-    UNREFERENCED_PARAMETER(CallbackContext);
-    UNREFERENCED_PARAMETER(Argument1);
-    UNREFERENCED_PARAMETER(Argument2);
-
-    NTSTATUS ntStatus = STATUS_SUCCESS;
-
-    return ntStatus;
-}

@@ -111,9 +111,7 @@ typedef struct _GLOBAL_DATA
     OBCALLBACK_NODE *m_ObRegistrationHandle;    //Saves the object returned by ObRegisterCallbacks to detect whether the callback is stripped and used when unloaded
 
     PVOID m_MFilterHandle;                      //Register MiniFilter Handle
-    PDRIVER_OBJECT m_DriverObject;              //Our own driver object
-
-    LARGE_INTEGER m_CmRegisterCallbackCookie;   
+    PDRIVER_OBJECT m_DriverObject;              //Our own driver object  
 
     ERESOURCE m_WhiteListLock;                  //Resource lock when accessing a WhiteList that is owned exclusively
 

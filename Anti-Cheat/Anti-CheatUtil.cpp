@@ -9,15 +9,36 @@ NTSTATUS KrnlGetPspLoadImageNotifyRoutine(_Out_ PULONG_PTR pOutAddress)
     UCHAR *ScanfBase = 0;
     ULONG i = 0;
     ULONG dwOffset = 0;
-    DECLARE_CONST_UNICODE_STRING(uSystemRoutineName, L"PsSetLoadImageNotifyRoutineEx"); 
-    ULONG_PTR f_PsRemoveLoadImageNotifyRoutine = NULL;
-
-    f_PsRemoveLoadImageNotifyRoutine = (ULONG_PTR)MmGetSystemRoutineAddress((PUNICODE_STRING)&uSystemRoutineName);
-    if (!f_PsRemoveLoadImageNotifyRoutine)
-        return ntStatus;
+    UNICODE_STRING uSystemRoutineName = { 0x00 };
+    ULONG_PTR f_PsSetLoadImageFuncAddr = NULL;
 
 #ifdef _WIN64
-    ScanfBase = (UCHAR *)f_PsRemoveLoadImageNotifyRoutine;
+#if NTDDI_VERSION >= NTDDI_WIN10
+    RtlInitUnicodeString(&uSystemRoutineName, L"PsSetLoadImageNotifyRoutineEx");
+
+    f_PsSetLoadImageFuncAddr = (ULONG_PTR)MmGetSystemRoutineAddress((PUNICODE_STRING)&uSystemRoutineName);
+
+#else
+#if NTDDI_VERSION >= NTDDI_WIN8
+
+    RtlInitUnicodeString(&uSystemRoutineName, L"PsSetLoadImageNotifyRoutine");
+    f_PsSetLoadImageFuncAddr = (ULONG_PTR)MmGetSystemRoutineAddress((PUNICODE_STRING)&uSystemRoutineName);
+    
+#else 
+#if NTDDI_VERSION >= NTDDI_WIN7
+
+#endif //NTDDI_VERSION >= NTDDI_WIN7
+
+#endif //NTDDI_VERSION >= NTDDI_WIN8
+
+#endif //NTDDI_VERSION >= NTDDI_WIN10
+
+    if (!f_PsSetLoadImageFuncAddr)
+    {
+        goto finish;
+    }
+    ScanfBase = (UCHAR*)f_PsSetLoadImageFuncAddr;
+    
     for (i = 0; i < 0x100; ++i)
     {
         //lea,rcx,PspLoadIamgeNotifyRoutine  48 8d 0d 28 80 da ff 
@@ -25,20 +46,21 @@ NTSTATUS KrnlGetPspLoadImageNotifyRoutine(_Out_ PULONG_PTR pOutAddress)
             *(ScanfBase + i + 1) == 0x8d &&
             *(ScanfBase + i + 2) == 0x0d)
         {
-            dwOffset = *(ULONG *)(ScanfBase + i + 3);
+            dwOffset = *(ULONG*)(ScanfBase + i + 3);
 
             if (!dwOffset)
                 break;
 
             //PspLoadImageNotifyRoutine = ScanfBase + i + dwOffset + 7 - 0x100000000
-            *pOutAddress = (ULONG_PTR)(ScanfBase + i  + dwOffset + 7 - 0x100000000);
-            ntStatus = STATUS_SUCCESS; 
+            *pOutAddress = (ULONG_PTR)(ScanfBase + i + dwOffset + 7 - 0x100000000);
+            ntStatus = STATUS_SUCCESS;
             break;
         }
     }
 #else
-#endif
+#endif //_WIN64
 
+finish:
     return ntStatus;
 }
 

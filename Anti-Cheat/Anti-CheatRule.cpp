@@ -193,7 +193,8 @@ NTSTATUS UpdateProtectProcessList(LIST_ENTRY* pListHeader)
     KrnlRemoveProtectProcessList(pListHeader);
     while (ProtectNames[i] != NULL)
     {
-        pData = (ANTI_CHEAT_PROTECT_PROCESS_DATA*)ExAllocatePoolWithTag(PagedPool, sizeof(ANTI_CHEAT_PROTECT_PROCESS_DATA), 'torP');
+        //Prevents a physical exchange that causes MmIsAddressInvalid to return incorrect results
+        pData = (ANTI_CHEAT_PROTECT_PROCESS_DATA*)ExAllocatePoolWithTag(NonPagedPool, sizeof(ANTI_CHEAT_PROTECT_PROCESS_DATA), 'torP');
         if (pData)
         {
             RtlZeroMemory(pData, sizeof(ANTI_CHEAT_PROTECT_PROCESS_DATA));
