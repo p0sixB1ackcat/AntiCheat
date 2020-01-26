@@ -85,16 +85,22 @@ typedef struct _OBJECT_TYPE
     UNICODE_STRING Name;
     ULONG_PTR DefaultObject;
     UCHAR Index;
+#if NTDDI_VERSION >= NTDDI_WIN8
     UCHAR PADDING0[0x03];
+#endif
     ULONG TotalNumberOfObjects;
     ULONG TotalNumberOfHandles;
     ULONG HighWaterNumberOfObjects;
     ULONG HighWaterNumberOfHandles;
+#if NTDDI_VERSION >= NTDDI_WIN8
     UCHAR PADDING1[0x04];
+#endif
     OBJECT_TYPE_INITIALIZER TypeInfo;
     _EX_PUSH_LOCK TypeLock;
     ULONG Key;
+#if NTDDI_VERSION >= NTDDI_WIN8
     UCHAR PADDING2[0x04];
+#endif
     LIST_ENTRY* CallbackList;
 }OBJECT_TYPE,*POBJECT_TYPE;
 
@@ -224,7 +230,7 @@ UnlockList(
     ERESOURCE* pLock
 );
 
-FORCEINLINE
+EXTERN_C FORCEINLINE
 VOID
 KrnlSleep(
     _In_ ULONG Milliseconds

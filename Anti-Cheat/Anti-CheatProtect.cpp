@@ -6,7 +6,7 @@
 
 BOOLEAN KrnlCheckLoadImageNorifyRoutineCallback(VOID)
 {
-    BOOLEAN bRet = TRUE;
+    BOOLEAN bRet = FALSE;
     PEX_CALLBACK_ROUTINE_BLOCK *PspLoadImageNotifyRoutines = 0;
     ULONG_PTR *pCallback = NULL;
     NTSTATUS Status = STATUS_SUCCESS;
@@ -31,14 +31,17 @@ BOOLEAN KrnlCheckLoadImageNorifyRoutineCallback(VOID)
             //last is null,ret FALSE
             if (PspLoadImageNotifyRoutines[i] == NULL)
             {
-                bRet = FALSE;
                 break;
             }
             
             //The callback function address is handled by referring to WRK
             pCallback = (ULONG_PTR *)((ULONG_PTR)PspLoadImageNotifyRoutines[i] & (~7));
             if (*pCallback == (ULONG_PTR)AnticheatLoadImageRoutine)
+            {
+                bRet = TRUE;
                 break;
+            }
+                
         }
 
     } while (FALSE);
@@ -49,16 +52,28 @@ BOOLEAN KrnlCheckLoadImageNorifyRoutineCallback(VOID)
 
 extern GLOBAL_DATA g_Global_Data;
 extern SYSTEM_DYNAMIC_DATA g_System_Dynamic_Data;
+typedef __int64 (__fastcall *EXFACQUIREPUSHLOCKEXCLUSIVE)(PVOID);
+typedef int(__fastcall *EXFRELEASEPUSHLOCK)(PVOID);
 
 BOOLEAN KrnlCheckObCallbackRoutine(PVOID pObRegistrationHandle)
 {
     BOOLEAN bRemObCallBackRoutine = TRUE;
     POBCALLBACK_NODE pCallbackNode = (POBCALLBACK_NODE)pObRegistrationHandle;
-    LIST_ENTRY* pEntry = NULL;   
-    LIST_ENTRY* Flink = NULL;
-    LIST_ENTRY* Blink = NULL;
+    LIST_ENTRY* pEntry = nullptr;   
+    LIST_ENTRY* Flink = nullptr;
+    LIST_ENTRY* Blink = nullptr;
     OBCALLBACK_BODY *pCallbackBody = {0x00};
     ULONG i = 0;
+    EXFACQUIREPUSHLOCKEXCLUSIVE f_ExAcquirePushLockExclusive = nullptr;
+    EXFRELEASEPUSHLOCK f_ExfReleasePushLock = nullptr;
+
+#if NTDDI_VERSION >= NTDDI_WIN8
+    UNREFERENCED_PARAMETER(f_ExfReleasePushLock);
+    UNREFERENCED_PARAMETER(f_ExAcquirePushLockExclusive);
+#endif
+
+    DECLARE_CONST_UNICODE_STRING(uPushLockExclusiveFuncName, L"ExfAcquirePushLockExclusive");
+    DECLARE_CONST_UNICODE_STRING(uExfReleasePushLockFuncName, L"ExfReleasePushLock");
 
     //Traverse callbackbody
     if (pCallbackNode->usCallbackBodyCount > 0)
@@ -72,7 +87,17 @@ BOOLEAN KrnlCheckObCallbackRoutine(PVOID pObRegistrationHandle)
             ExAcquirePushLockExclusiveEx((PULONG_PTR)&(((OBJECT_TYPE*)pCallbackBody->pObjectType)->TypeLock), 0);
 #else
 
+            //WIN7 x64
+            f_ExAcquirePushLockExclusive = (EXFACQUIREPUSHLOCKEXCLUSIVE)MmGetSystemRoutineAddress((PUNICODE_STRING)&uPushLockExclusiveFuncName);
+            f_ExfReleasePushLock = (EXFRELEASEPUSHLOCK)MmGetSystemRoutineAddress((PUNICODE_STRING)&uExfReleasePushLockFuncName);
+
+            if (f_ExAcquirePushLockExclusive != nullptr && f_ExfReleasePushLock != nullptr)
+            {
+                f_ExAcquirePushLockExclusive((PVOID)((UCHAR *)&((OBJECT_TYPE*)pCallbackBody->pObjectType)->TypeLock - 0x10));
+            }
+            
 #endif //NTDDI_VERSION >= WINVER_8
+
             //Determine if our callbackbody->ListEntry.flink->Blink & callbackbody->ListEntry.Blink->Flink is pointing to ourselves
             Flink = pCallbackBody->ListEntry.Flink;
             Blink = pCallbackBody->ListEntry.Blink;
@@ -82,9 +107,15 @@ BOOLEAN KrnlCheckObCallbackRoutine(PVOID pObRegistrationHandle)
             {
                 bRemObCallBackRoutine = FALSE;
             }
+
 #if NTDDI_VERSION >= NTDDI_WIN8
             ExReleasePushLockExclusiveEx((PULONG_PTR)&((OBJECT_TYPE*)pCallbackBody->pObjectType)->TypeLock, 0);
 #else
+            if (f_ExfReleasePushLock != nullptr)
+            {
+                f_ExfReleasePushLock((PVOID)((UCHAR *)&((OBJECT_TYPE*)pCallbackBody->pObjectType)->TypeLock - 0x10));
+            }
+
 #endif //NTDDI_VERSION >= NTDDI_WIN8
         }
     }
@@ -102,6 +133,7 @@ KrnlMsToTicks(
     return 10000LL * (LONGLONG)(Milliseconds);
 }
 
+EXTERN_C
 FORCEINLINE
 VOID
 KrnlSleep(
@@ -143,6 +175,8 @@ VOID ProtectWorkThread(PVOID pThreadContext)
 {
     UNREFERENCED_PARAMETER(pThreadContext);
 
+    KIRQL kCurrentIrql = 0x00;
+
     while (1)
     {
         //If DriverUnload is performed, the thread needs to be terminated first
@@ -178,7 +212,11 @@ VOID ProtectWorkThread(PVOID pThreadContext)
         }
 
         //sleep 3 second
-        KrnlSleep(3000);
+        kCurrentIrql = KeGetCurrentIrql();
+        if (kCurrentIrql <= DISPATCH_LEVEL)
+        {
+            KrnlSleep(3000);
+        }     
     }
 }
 
@@ -200,7 +238,7 @@ VOID Protect(PVOID pContext)
 
     if (!NT_SUCCESS(Status))
         return;
-
+    
     Status = ObReferenceObjectByHandle(hThread, THREAD_ALL_ACCESS, NULL, KernelMode, &pThreadObject, NULL);
     if (!NT_SUCCESS(Status))
     {

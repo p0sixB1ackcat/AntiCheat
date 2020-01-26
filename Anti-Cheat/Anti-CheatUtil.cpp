@@ -20,12 +20,13 @@ NTSTATUS KrnlGetPspLoadImageNotifyRoutine(_Out_ PULONG_PTR pOutAddress)
 
 #else
 #if NTDDI_VERSION >= NTDDI_WIN8
-
     RtlInitUnicodeString(&uSystemRoutineName, L"PsSetLoadImageNotifyRoutine");
     f_PsSetLoadImageFuncAddr = (ULONG_PTR)MmGetSystemRoutineAddress((PUNICODE_STRING)&uSystemRoutineName);
     
 #else 
 #if NTDDI_VERSION >= NTDDI_WIN7
+    RtlInitUnicodeString(&uSystemRoutineName, L"PsSetLoadImageNotifyRoutine");
+    f_PsSetLoadImageFuncAddr = (ULONG_PTR)MmGetSystemRoutineAddress((PUNICODE_STRING)&uSystemRoutineName);
 
 #endif //NTDDI_VERSION >= NTDDI_WIN7
 

@@ -180,19 +180,22 @@ AnticheatLoadImageRoutine(
             }
 
             ImageEntryPointer = (PVOID)(ULONG_PTR)(pNt->OptionalHeader.ImageBase + pNt->OptionalHeader.AddressOfEntryPoint);
-
-            if (!MmIsAddressValid(ImageEntryPointer))
+            
+            if (!MmIsAddressValid(ImageEntryPointer) || ImageEntryPointer <= MM_SYSTEM_RANGE_START)
             {
                 ImageEntryPointer = (PVOID)((ULONG_PTR)pDos + pNt->OptionalHeader.AddressOfEntryPoint);
                 if (!MmIsAddressValid(ImageEntryPointer))
                     goto finish;
             }
 
+            pNewMapVa = ImageEntryPointer;
+
             //Map the physical address to a new virtual address, and then write to that virtual address...
+#if NTDDI_VERSION >= NTDDI_WIN8
             pMdl = IoAllocateMdl(ImageEntryPointer, Size, FALSE, FALSE, NULL);
             if (!pMdl)
                 goto finish;
-
+            
             MmProbeAndLockPages(pMdl, KernelMode, (LOCK_OPERATION)(IoReadAccess | IoWriteAccess | IoModifyAccess));
             
             __try
@@ -206,11 +209,19 @@ AnticheatLoadImageRoutine(
             if (pNewMapVa)
             {
                 //Override DriverEntry in the blacklist
-                RtlCopyMemory(pNewMapVa, Hook_DriverEntryPointer, 0x10);
+                RtlCopyMemory(pNewMapVa, Hook_DriverEntryPointer, Size);
                 MmUnmapLockedPages(pNewMapVa, pMdl);
             }
 
             IoFreeMdl(pMdl);
+#else
+            UNREFERENCED_PARAMETER(pMdl);
+            if (pNewMapVa)
+            {
+                RtlCopyMemory(pNewMapVa, Hook_DriverEntryPointer, Size);
+            }
+
+#endif //NTDDI_VERSION >= NTDDI_WIN8
         }
         else if (wcscmp(pExeName, L".exe") == 0)
         {
