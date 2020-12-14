@@ -1,2 +1,2 @@
 # AntiCheat
-A simple DLL injection protection driver
+A simple DLL injection protection driver.
