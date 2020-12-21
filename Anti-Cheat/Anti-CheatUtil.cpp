@@ -175,7 +175,7 @@ NTSTATUS KrnlGetProcessName(_In_ PEPROCESS Eprocess,_Out_ UNICODE_STRING *Proces
             Status = STATUS_MEMORY_NOT_ALLOCATED;
             break;
         }
-
+        
         Status = ZwQueryInformationProcess(NtCurrentProcess(),
             ProcessImageFileName,
             pQueryString,

@@ -35,7 +35,7 @@ NTSTATUS FindSystemProcess(_In_ HANDLE ProcessId,
         pProcInfo = (PSYSTEM_PROCESS_INFORMATION)ExAllocatePoolWithTag(PagedPool, 2 * dwRet,'PsyS');
         if (!pProcInfo)
         {
-            ntStatus = STATUS_NOT_FOUND;
+            ntStatus = STATUS_INSUFFICIENT_RESOURCES;
             break;
         }
 
